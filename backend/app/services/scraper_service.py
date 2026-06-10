@@ -58,6 +58,12 @@ class FeedScraperService:
             warnings.append("Showing clearly labeled demo data because live sources returned no items.")
         elif not results:
             warnings.append("No recent public items were returned by the configured sources.")
+        else:
+            warnings = [
+                warning
+                for warning in warnings
+                if not warning.endswith("could not be reached.")
+            ]
 
         mode = "openai-ranked" if ai_ranked else f"{planning_mode}-ranked"
         return results[:20], warnings, mode
