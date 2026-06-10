@@ -61,23 +61,35 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([api.getCategories(), api.getHistory()])
-      .then(([remoteCategories, remoteHistory]) => {
+    Promise.allSettled([api.getCategories(), api.getHistory()]).then(
+      ([categoriesResult, historyResult]) => {
         if (!active) return;
-        setCategories((items) => mergeCategories(items, remoteCategories));
-        setHistory((items) =>
-          mergeById(items, remoteHistory).sort(
-            (a, b) => new Date(b.searched_at) - new Date(a.searched_at),
-          ),
-        );
-      })
-      .catch(() => {
-        if (active) {
+
+        if (categoriesResult.status === "fulfilled") {
+          setCategories((items) =>
+            mergeCategories(items, categoriesResult.value),
+          );
+        }
+        if (historyResult.status === "fulfilled") {
+          setHistory((items) =>
+            mergeById(items, historyResult.value).sort(
+              (a, b) => new Date(b.searched_at) - new Date(a.searched_at),
+            ),
+          );
+        }
+
+        if (
+          categoriesResult.status === "rejected" &&
+          historyResult.status === "rejected"
+        ) {
           setAppError(
             "Backend sync is unavailable. Saved local data is still accessible.",
           );
+        } else {
+          setAppError("");
         }
-      });
+      },
+    );
     return () => {
       active = false;
     };
