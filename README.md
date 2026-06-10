@@ -9,7 +9,7 @@ The architecture borrows the useful parts of the `last30days-skill` concept: und
 The app includes:
 
 - A one-hand-friendly prompt and category interface.
-- Real public adapters for Hacker News Algolia and Reddit public search.
+- Real public adapters for Google News RSS, Hacker News Algolia, and Reddit public search.
 - OpenAI-assisted search planning, summarization, and relevance ranking.
 - A local ranking fallback when OpenAI is not configured or fails.
 - Supabase category and history persistence.
@@ -18,7 +18,7 @@ The app includes:
 - Server-generated PDF and DOCX reports.
 - Explicit warnings when a live source is unavailable.
 
-Live scraping is limited to the included Hacker News and Reddit adapters. Additional networks such as X, YouTube, TikTok, or general web search require their own approved APIs and should be added as new adapter methods in `backend/app/services/scraper_service.py`. The app does not claim those sources are currently searched.
+Live retrieval is limited to the included Google News RSS, Hacker News, and Reddit adapters. Reddit may block requests from serverless hosting providers; the remaining sources continue independently. Additional networks such as X, YouTube, or TikTok require their own approved APIs and should be added as new adapter methods in `backend/app/services/scraper_service.py`. The app does not claim those sources are currently searched.
 
 ## 2. Folder structure
 

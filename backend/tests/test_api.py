@@ -6,6 +6,7 @@ from app.dependencies import get_repository
 from app.main import app
 from app.models import ExportRequest, FeedResult
 from app.services.export_service import build_docx, build_pdf
+from app.services.scraper_service import FeedScraperService
 
 client = TestClient(app)
 
@@ -55,6 +56,20 @@ def test_export_generation() -> None:
     )
     assert len(build_pdf(payload).getvalue()) > 1000
     assert len(build_docx(payload).getvalue()) > 1000
+
+
+def test_rss_date_parser() -> None:
+    parsed = FeedScraperService._parse_rss_date("Wed, 10 Jun 2026 10:00:00 GMT")
+    assert parsed is not None
+    assert parsed.year == 2026
+    assert parsed.tzinfo is not None
+
+
+def test_generic_news_prompt_detection() -> None:
+    assert FeedScraperService._is_generic_news_prompt(
+        "What is the trending news?"
+    )
+    assert not FeedScraperService._is_generic_news_prompt("Trending AI news")
 
 
 def teardown_module() -> None:

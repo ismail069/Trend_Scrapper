@@ -2,8 +2,10 @@ import asyncio
 import logging
 import re
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from html import unescape
 from urllib.parse import quote_plus
+from xml.etree import ElementTree
 
 import httpx
 
@@ -33,13 +35,14 @@ class FeedScraperService:
             headers={"User-Agent": "FeedTrenScrapper/1.0"},
         ) as client:
             tasks = [
-                self._search_hacker_news(client, plan, category, since),
+                self._search_hacker_news(client, plan, prompt, category, since),
                 self._search_reddit(client, plan, category, since),
+                self._search_google_news(client, plan, prompt, category, since),
             ]
             responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         results: list[FeedResult] = []
-        source_names = ("Hacker News", "Reddit")
+        source_names = ("Hacker News", "Reddit", "Google News")
         for source_name, response in zip(source_names, responses, strict=True):
             if isinstance(response, Exception):
                 logger.warning("%s adapter failed: %s", source_name, response)
@@ -63,10 +66,15 @@ class FeedScraperService:
         self,
         client: httpx.AsyncClient,
         plan: ResearchPlan,
+        prompt: str,
         category: str,
         since: datetime,
     ) -> list[FeedResult]:
-        query = " OR ".join(plan.queries[:3])
+        query = (
+            ""
+            if self._is_generic_news_prompt(prompt)
+            else " ".join(plan.queries[:2])
+        )
         response = await client.get(
             "https://hn.algolia.com/api/v1/search_by_date",
             params={
@@ -77,8 +85,20 @@ class FeedScraperService:
             },
         )
         response.raise_for_status()
+        hits = response.json().get("hits", [])
+        if not hits:
+            response = await client.get(
+                "https://hn.algolia.com/api/v1/search_by_date",
+                params={
+                    "tags": "story",
+                    "numericFilters": f"created_at_i>{int(since.timestamp())}",
+                    "hitsPerPage": 12,
+                },
+            )
+            response.raise_for_status()
+            hits = response.json().get("hits", [])
         items = []
-        for hit in response.json().get("hits", []):
+        for hit in hits:
             title = hit.get("title") or hit.get("story_title")
             if not title:
                 continue
@@ -94,6 +114,66 @@ class FeedScraperService:
                     source_url=url,
                     source_name="Hacker News",
                     published_at=hit.get("created_at"),
+                    category=category,
+                )
+            )
+        return items
+
+    async def _search_google_news(
+        self,
+        client: httpx.AsyncClient,
+        plan: ResearchPlan,
+        prompt: str,
+        category: str,
+        since: datetime,
+    ) -> list[FeedResult]:
+        generic_news = self._is_generic_news_prompt(prompt)
+        query = plan.queries[0].strip() if plan.queries else prompt
+        endpoint = (
+            "https://news.google.com/rss"
+            if generic_news
+            else "https://news.google.com/rss/search"
+        )
+        params = {
+            "hl": "en-US",
+            "gl": "US",
+            "ceid": "US:en",
+        }
+        if not generic_news:
+            params["q"] = f"{query} when:30d"
+        response = await client.get(
+            endpoint,
+            params=params,
+        )
+        response.raise_for_status()
+        root = ElementTree.fromstring(response.content)
+        items: list[FeedResult] = []
+        for index, node in enumerate(root.findall("./channel/item")[:12]):
+            title = (node.findtext("title") or "").strip()
+            url = (node.findtext("link") or "").strip()
+            if not title or not url:
+                continue
+            published_at = self._parse_rss_date(node.findtext("pubDate"))
+            if published_at and published_at < since:
+                continue
+            source_node = node.find("source")
+            source_name = (
+                source_node.text.strip()
+                if source_node is not None and source_node.text
+                else "Google News"
+            )
+            description = unescape(
+                TAG_RE.sub("", node.findtext("description") or "")
+            ).strip()
+            summary = description[:320] or f"Recent report published by {source_name}."
+            items.append(
+                FeedResult(
+                    id=f"google-news-{index}-{abs(hash(url))}",
+                    title=title,
+                    summary=summary,
+                    source_url=url,
+                    source_name=source_name,
+                    published_at=published_at,
                     category=category,
                 )
             )
@@ -188,3 +268,36 @@ class FeedScraperService:
             )
         ]
 
+    @staticmethod
+    def _parse_rss_date(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = parsedate_to_datetime(value)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _is_generic_news_prompt(prompt: str) -> bool:
+        generic_words = {
+            "a",
+            "are",
+            "current",
+            "headline",
+            "headlines",
+            "is",
+            "latest",
+            "news",
+            "now",
+            "the",
+            "today",
+            "top",
+            "trend",
+            "trending",
+            "what",
+        }
+        words = set(re.findall(r"[a-z0-9]+", prompt.lower()))
+        return bool(words & {"news", "headline", "headlines", "trending"}) and not (
+            words - generic_words
+        )
