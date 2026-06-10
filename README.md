@@ -177,6 +177,33 @@ cd ..\frontend
 npm run build
 ```
 
+### Deploy to Vercel
+
+Create two Vercel projects from the same GitHub repository.
+
+Backend project:
+
+- Root Directory: `backend`
+- Framework Preset: `FastAPI`
+- Environment variables: `OPENAI_API_KEY`, `OPENAI_MODEL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FRONTEND_ORIGIN`, and `ENABLE_MOCK_RESULTS`
+- Verify the deployment at `/api/health` or `/docs`
+
+Frontend project:
+
+- Root Directory: `frontend`
+- Framework Preset: `Vite`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Environment variable: `VITE_API_URL=https://your-backend-project.vercel.app`
+
+Deploy the backend first. After the frontend is deployed, set the backend
+`FRONTEND_ORIGIN` to the exact frontend production origin, without a trailing
+slash, and redeploy the backend.
+
+Do not deploy the repository root as a single Vercel project. The repository is
+a monorepo, so a root deployment cannot infer whether it should build the Vite
+frontend or the FastAPI backend.
+
 ## 8. Notes and assumptions
 
 - No authentication is included, as requested.
@@ -186,4 +213,3 @@ npm run build
 - Reddit may rate-limit or reject traffic from some hosting providers. That failure is returned as a warning while other adapters continue.
 - The current source layer is intentionally small and transparent. Add new live integrations as adapters; do not ask the model to fabricate feed items.
 - Never commit `.env`. Credentials shared in chat or logs should be rotated before a production launch.
-
