@@ -195,6 +195,7 @@ Frontend project:
 - Build Command: `npm run build`
 - Output Directory: `dist`
 - Environment variable: `VITE_API_URL=https://your-backend-project.vercel.app`
+  (prefer no trailing slash; the client also normalizes it defensively)
 
 Deploy the backend first. After the frontend is deployed, set the backend
 `FRONTEND_ORIGIN` to the exact frontend production origin, without a trailing
